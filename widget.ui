@@ -478,8 +478,8 @@ QScrollBar::right-arrow:horizontal {
   <widget class="QPushButton" name="postButton">
    <property name="geometry">
     <rect>
-     <x>680</x>
-     <y>520</y>
+     <x>670</x>
+     <y>500</y>
      <width>101</width>
      <height>41</height>
     </rect>
@@ -512,10 +512,23 @@ QScrollBar::right-arrow:horizontal {
    <property name="geometry">
     <rect>
      <x>240</x>
-     <y>520</y>
+     <y>500</y>
      <width>421</width>
-     <height>71</height>
+     <height>91</height>
     </rect>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="streamButton">
+   <property name="geometry">
+    <rect>
+     <x>670</x>
+     <y>550</y>
+     <width>101</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>流式输出</string>
    </property>
   </widget>
  </widget>
