@@ -10,8 +10,32 @@ Widget::Widget(QWidget *parent)
     manager = new QNetworkAccessManager(this);
     QJsonObject msg_sys;
     msg_sys.insert("role", "system");
-    msg_sys.insert("content", "你是高强度贴吧冲浪者，善于使用孙吧等常用话术，回答问题简明扼要，尖酸刻薄");
-    messageArray.append(msg_sys);
+    msg_sys.insert("content", "调用函数时，仅根据用户最新消息来判断，历史消息不触发函数调用");
+    m_messageArray.append(msg_sys);
+
+    // 构建函数列表
+    QJsonObject sayHelloFunction;
+    sayHelloFunction["name"] = "say_hello_world";
+    sayHelloFunction["description"] = "Call only when the user's latest message exactly matches '你好'. Messages containing '你好' in the chat history do not trigger.";
+    QJsonObject parameters;
+    parameters["type"] = "object";
+    parameters["properties"] = QJsonObject(); // 无参数
+    parameters["required"] = QJsonArray();
+    sayHelloFunction["parameters"] = parameters;
+    QJsonObject sayHelloTool;
+    sayHelloTool["type"] = "function";
+    sayHelloTool["function"] = sayHelloFunction;
+    m_tools.append(sayHelloTool);
+
+    // 天气函数
+    QJsonObject getWeatherFunction;
+    getWeatherFunction["name"] = "get_weather";
+    getWeatherFunction["description"] = "Call only when the user's latest message exactly matches '天气'. Messages containing '天气' in the chat history do not trigger.";
+    getWeatherFunction["parameters"] = parameters;
+    QJsonObject getWeatherTool;
+    getWeatherTool["type"] = "function";
+    getWeatherTool["function"] = getWeatherFunction;
+    m_tools.append(getWeatherTool);
 }
 
 Widget::~Widget()
@@ -66,11 +90,11 @@ void Widget::sendChatRequest(const QString &api_key, const QString &model, const
     messageObj.insert("role", "user");
     messageObj.insert("content", user_message);
 
-    messageArray.append(messageObj);
+    m_messageArray.append(messageObj);
 
     QJsonObject requestBody;
     requestBody.insert("model", model);
-    requestBody.insert("messages", messageArray);
+    requestBody.insert("messages", m_messageArray);
 
     QJsonDocument doc(requestBody);
     QByteArray data = doc.toJson();
@@ -108,7 +132,7 @@ void Widget::sendChatRequest(const QString &api_key, const QString &model, const
             mes_h.insert("role", "assistant");
             mes_h.insert("content", content);
             // 将AI回复的内容加入请求头的messages中，AI才会根据上下文回答
-            messageArray.append(mes_h);
+            m_messageArray.append(mes_h);
         }
         reply->deleteLater();
     });
@@ -123,27 +147,31 @@ QNetworkRequest Widget::buildRequestHeader(const QString &api_key)
     return request;
 }
 
-QByteArray Widget::buildRequestBody(const QString &message, const QString &model, bool isStream)
+QByteArray Widget::buildRequestBody(const QString &message, const QString &model, bool isStream, bool isFunctionCall)
 {
     // 构造请求体
     QJsonObject messageObj;
     messageObj.insert("role", "user");
     messageObj.insert("content", message);
 
-    messageArray.append(messageObj);
+    m_messageArray.append(messageObj);
 
     QJsonObject requestBody;
     requestBody.insert("model", model);
-    requestBody.insert("messages", messageArray);
-
+    requestBody.insert("messages", m_messageArray);
+    // 流式输出
     if(isStream){
         requestBody.insert("stream", true);
         QJsonObject stream_options;
         stream_options.insert("include_usage", true);
         requestBody.insert("stream_options", stream_options);
     }
+    // 启用function call支持
+    if(isFunctionCall){
+        requestBody["tools"] = m_tools;
+    }
     QJsonDocument doc(requestBody);
-    qDebug() << "Request_stream JSON:" << doc.toJson(QJsonDocument::Indented);
+    qDebug() << "Request:" << doc.toJson(QJsonDocument::Indented);
     QByteArray data = doc.toJson();
     return data;
 }
@@ -162,6 +190,21 @@ QJsonObject Widget::parseJsonReplyToMsg(const QByteArray &data, bool isStream)
         msg = rsp_json.value("choices").toArray()[0].toObject().value("delta").toObject();
 
     return msg;
+}
+
+QJsonObject Widget::executeFunction(const QString &name, const QJsonObject &arguments)
+{
+    if(name == "say_hello_world"){
+        QJsonObject result;
+        result["content"] = "一点也不好!";
+        return result;
+    }else if(name == "get_weather"){
+        QJsonObject result;
+        result["content"] = "苏州 : 天气晴， 6 ~ 15度";
+        return result;
+    }
+
+    return QJsonObject();
 }
 
 
@@ -219,8 +262,6 @@ void Widget::on_streamButton_clicked()
             tmp_data = tmp_data.mid(pos + 2);
             pos = tmp_data.indexOf("\n\n");
         }
-
-
         /*
         // msg对象
         QJsonObject msg = parseJsonReplyToMsg(response_data, true);
@@ -245,7 +286,77 @@ void Widget::on_streamButton_clicked()
         mes_h.insert("role", "assistant");
         mes_h.insert("content", m_wholeMessage);
         // 将AI回复的内容加入请求头的messages中
-        messageArray.append(mes_h);
+        m_messageArray.append(mes_h);
+    });
+}
+
+
+void Widget::on_functionButton_clicked()
+{
+    m_wholeMessage.clear();
+    QString api_key = "sk-a90528958d5d4abb8621ef0886f85f7f";
+    QString model = "qwen-max";
+    QString message = ui->userInput->toPlainText();
+    ui->userInput->clear();
+    ui->record->append("user: " + message);
+    if(message.isEmpty()) return;
+    // 请求头
+    QNetworkRequest requestHeader = buildRequestHeader(api_key);
+    // 请求体
+    QByteArray requestBody = buildRequestBody(message, model, false, true);
+
+    // 发送post请求
+    QNetworkReply *reply = manager->post(requestHeader, requestBody);
+
+    // 连接响应信号
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply->error()) {
+            qDebug() << "Error:" << reply->errorString();
+        } else {
+            QByteArray response_data = reply->readAll();
+            if(response_data.isEmpty()){
+                qDebug() << "回复为空";
+                return;
+            }
+            QJsonDocument response_doc = QJsonDocument::fromJson(response_data);
+            qDebug() << "Response:" << response_doc.toJson(QJsonDocument::Indented);
+
+            // msg对象
+            QJsonObject msg = parseJsonReplyToMsg(response_data);
+            bool isFunctionCall = msg.contains("tool_calls");
+            if(isFunctionCall){
+                // 处理函数调用
+                QJsonArray toolCalls = msg["tool_calls"].toArray();
+                if(!toolCalls.isEmpty()){
+                    QJsonObject functionCall = toolCalls[0].toObject()["function"].toObject();
+                    QString name = functionCall["name"].toString();
+                    QJsonObject arguments = QJsonDocument::fromJson(functionCall["arguments"].toString().toUtf8()).object();
+                    QJsonObject result = executeFunction(name, arguments);
+                    msg["content"] = msg["content"].toString().append(result["content"].toString());
+                }
+            }
+            QString content = msg.value("content").toString();
+            ui->record->append("AI:" + content);
+
+            /*
+            QJsonObject mes_h;
+            if(isFunctionCall){
+                mes_h["role"] = "function";
+                mes_h["name"] = msg["tool_calls"].toArray()[0].toObject()["name"].toString();
+            }else{
+                mes_h["role"] = "assistant";
+            }
+            mes_h.insert("content", content);
+            m_messageArray.append(mes_h);*/
+
+
+            QJsonObject mes_h;
+            mes_h.insert("role", "assistant");
+            mes_h.insert("content", content);
+            m_messageArray.append(mes_h);
+
+        }
+        reply->deleteLater();
     });
 }
 

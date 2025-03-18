@@ -31,20 +31,23 @@ private slots:
 
     void on_streamButton_clicked();
 
+    void on_functionButton_clicked();
+
 private:
     Ui::Widget *ui;
-
     // 网络管理器
     QNetworkAccessManager *manager;
     // 请求messages
-    QJsonArray messageArray;
+    QJsonArray m_messageArray;
+    QJsonArray m_tools;
     QString m_wholeMessage;
     QString m_record;
 
     void handelReply();
     void sendChatRequest(const QString &api_key, const QString &model, const QString user_message);
-    QByteArray buildRequestBody(const QString &message, const QString &model, bool isStream = false);
+    QByteArray buildRequestBody(const QString &message, const QString &model, bool isStream = false, bool isFunctionCall = false);
     QNetworkRequest buildRequestHeader(const QString &api_key);
     QJsonObject parseJsonReplyToMsg(const QByteArray &data, bool isStream = false);
+    QJsonObject executeFunction(const QString &name, const QJsonObject &arguments);
 };
 #endif // WIDGET_H
