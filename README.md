@@ -21,3 +21,73 @@ QT += network
 ## 界面
 ![](https://img2024.cnblogs.com/blog/2734270/202503/2734270-20250313171638305-66524931.png)
 
+- 增加模拟天气调用
+![](https://img2024.cnblogs.com/blog/2734270/202503/2734270-20250319150359388-1416870985.png)
+![](https://img2024.cnblogs.com/blog/2734270/202503/2734270-20250319150422236-1616285338.png)
+
+## 更新
+- 增加流式传输功能
+- 增加function call功能，由于DeepSeek不支持function call，更换模型为qwen-max
+    - 关键点：当收到返回消息有tool_calls时，**历史消息增加两条**，一条角色为assistant，参数需要tool_calls列表，一条角色为tool，参数要有调用函数的请求结果
+### 一个完整的请求体示例
+```
+{
+    "messages": [
+        {
+            "content": "调用函数时，仅根据用户最新消息来判断，历史消息不触发函数调用",
+            "role": "system"
+        },
+        {
+            "content": "北京天气",
+            "role": "user"
+        },
+        {
+            "content": "",
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "function": {
+                        "arguments": "{\"city\": \"北京\"}",
+                        "name": "get_weather"
+                    },
+                    "id": "call_08d86f66db154ff79b6e9c",
+                    "index": 0,
+                    "type": "function"
+                }
+            ]
+        },
+        {
+            "content": "\n{\n    \"temperature\": \"9℃\",\n    \"weather\": \"阴天\"\n}\n",
+            "name": "get_weather",
+            "role": "tool",
+            "tool_call_id": "call_08d86f66db154ff79b6e9c"
+        }
+    ],
+    "model": "qwen-max",
+    "tools": [
+        {
+            "function": {
+                "description": "获取城市的天气信息",
+                "name": "get_weather",
+                "parameters": {
+                    "properties": {
+                        "city": {
+                            "description": "城市名",
+                            "enum": [
+                                "杭州",
+                                "北京"
+                            ],
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "city"
+                    ],
+                    "type": "object"
+                }
+            },
+            "type": "function"
+        }
+    ]
+}
+```
